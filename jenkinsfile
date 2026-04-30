@@ -7,6 +7,8 @@ pipeline {
 
     environment {
         IMAGE_NAME = "bazeemme/my-demo-project-repo"
+        CHART_NAME = "demo-project-chart"
+        CHART_VERSION = "0.2.0"
     }
 
     stages {
@@ -23,12 +25,6 @@ pipeline {
             }
         }
 
-        stage('Test') {
-            steps {
-                sh 'mvn test'
-            }
-        }
-
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('SonarQube') {
@@ -39,11 +35,13 @@ pipeline {
 
         stage('Quality Gate') {
             steps {
-                timeout(time: 2, unit: 'MINUTES') {
+                timeout(time: 5, unit: 'MINUTES') {
                     waitForQualityGate abortPipeline: true
                 }
             }
         }
+
+        // ---------------- DOCKER ----------------
 
         stage('Docker Login') {
             steps {
@@ -63,33 +61,56 @@ pipeline {
             }
         }
 
-        stage('Docker Tag') {
-            steps {
-                sh 'docker tag $IMAGE_NAME:$BUILD_NUMBER $IMAGE_NAME:latest'
-            }
-        }
-
         stage('Docker Push') {
             steps {
                 sh 'docker push $IMAGE_NAME:$BUILD_NUMBER'
-                sh 'docker push $IMAGE_NAME:latest'
             }
         }
 
-        stage('Docker Logout') {
+        // ---------------- HELM ----------------
+
+        stage('Update Helm values.yaml') {
             steps {
-                sh 'docker logout'
+                sh """
+                sed -i 's/tag:.*/tag: ${BUILD_NUMBER}/' demo-project-chart/values.yaml
+                """
             }
         }
-    }
 
-    post {
-        always {
-            emailext(
-                to: 'baseemibnbasheer8@gmail.com',
-                subject: "Build ${currentBuild.currentResult}: ${env.JOB_NAME}",
-                body: "Build ${currentBuild.currentResult}. Check console: ${env.BUILD_URL}"
-            )
+        stage('Package Helm Chart') {
+            steps {
+                sh 'helm package demo-project-chart'
+            }
+        }
+
+        stage('Helm Login') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'docker-cred',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh 'echo $DOCKER_PASS | helm registry login registry-1.docker.io -u $DOCKER_USER --password-stdin'
+                }
+            }
+        }
+
+        stage('Push Helm Chart') {
+            steps {
+                sh """
+                helm push demo-project-chart-0.2.0.tgz oci://registry-1.docker.io/${IMAGE_NAME}
+                """
+            }
+        }
+
+        // ---------------- DEPLOY TRIGGER ----------------
+
+        stage('Trigger Deploy Job') {
+            steps {
+                build job: 'deploy-job', parameters: [
+                    string(name: 'IMAGE_TAG', value: "${BUILD_NUMBER}")
+                ]
+            }
         }
     }
 }
