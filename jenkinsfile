@@ -69,10 +69,10 @@ pipeline {
 
         // ---------------- HELM ----------------
 
-        stage('Update Helm values.yaml') {
+        stage('Update Chart Version') {
             steps {
                 sh """
-                sed -i 's/tag:.*/tag: ${BUILD_NUMBER}/' demo-project-chart/values.yaml
+                sed -i 's/^version:.*/version: 0.1.${BUILD_NUMBER}/' demo-project-chart/Chart.yaml
                 """
             }
         }
@@ -98,7 +98,8 @@ pipeline {
         stage('Push Helm Chart') {
             steps {
                 sh """
-                helm push demo-project-chart-0.1.0.tgz oci://registry-1.docker.io/bazeemme
+                CHART_PACKAGE=$(ls *.tgz)
+                helm push $CHART_PACKAGE oci://registry-1.docker.io/bazeemme
                 """
             }
         }
@@ -108,7 +109,8 @@ pipeline {
         stage('Trigger Deploy Job') {
             steps {
                 build job: 'deploy-job', parameters: [
-                    string(name: 'IMAGE_TAG', value: "${BUILD_NUMBER}")
+                    string(name: 'IMAGE_TAG', value: "${BUILD_NUMBER}"),
+                    string(name: 'CHART_VERSION', value: "0.1.${BUILD_NUMBER}")
                 ]
             }
         }
