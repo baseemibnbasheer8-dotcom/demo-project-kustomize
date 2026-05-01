@@ -98,7 +98,7 @@ pipeline {
         stage('Push Helm Chart') {
             steps {
                 sh """
-                CHART_PACKAGE=\$(ls *.tgz)
+                CHART_PACKAGE="${CHART_NAME}-0.1.${BUILD_NUMBER}.tgz"
                 helm push \$CHART_PACKAGE oci://registry-1.docker.io/bazeemme
                 """
             }
