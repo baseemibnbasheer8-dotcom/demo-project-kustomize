@@ -145,7 +145,7 @@ pipeline {
 
                 sh """
                 sed -i 's|newTag:.*|newTag: "${BUILD_NUMBER}"|g' \
-                k8s/base/kustomization.yaml
+                kustomize-dir/overlay/dev/kustomization.yaml
                 """
             }
         }
