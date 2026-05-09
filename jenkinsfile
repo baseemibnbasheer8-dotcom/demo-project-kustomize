@@ -6,113 +6,212 @@ pipeline {
     }
 
     environment {
+
         IMAGE_NAME = "bazeemme/my-demo-project-repo"
-        CHART_NAME = "demo-project-chart"
-        CHART_VERSION = "0.1.0"
+
+        AWS_BUCKET = "kustomize-demo"
     }
 
     stages {
 
+        // =========================================
+        // GIT CHECKOUT
+        // =========================================
+
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/baseemibnbasheer8-dotcom/demo-project.git'
+
+                git branch: 'main',
+                url: 'https://github.com/baseemibnbasheer8-dotcom/demo-project-kustomize.git'
             }
         }
 
+        // =========================================
+        // BUILD
+        // =========================================
+
         stage('Build') {
             steps {
+
                 sh 'mvn clean verify'
             }
         }
 
+        // =========================================
+        // UNIT TEST
+        // =========================================
+
+        stage('Unit Test') {
+            steps {
+
+                sh 'mvn test'
+            }
+        }
+
+        // =========================================
+        // SONARQUBE ANALYSIS
+        // =========================================
+
         stage('SonarQube Analysis') {
             steps {
+
                 withSonarQubeEnv('SonarQube') {
+
                     sh 'mvn sonar:sonar'
                 }
             }
         }
 
+        // =========================================
+        // QUALITY GATE
+        // =========================================
+
         stage('Quality Gate') {
             steps {
+
                 timeout(time: 5, unit: 'MINUTES') {
+
                     waitForQualityGate abortPipeline: true
                 }
             }
         }
 
-        // ---------------- DOCKER ----------------
+        // =========================================
+        // DOCKER LOGIN
+        // =========================================
 
         stage('Docker Login') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'docker-cred',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
-                    sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
+
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'docker-cred',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )
+                ]) {
+
+                    sh '''
+                    echo $DOCKER_PASS | docker login \
+                    -u $DOCKER_USER --password-stdin
+                    '''
                 }
             }
         }
+
+        // =========================================
+        // DOCKER BUILD
+        // =========================================
 
         stage('Docker Build') {
             steps {
-                sh 'docker build -t $IMAGE_NAME:$BUILD_NUMBER .'
+
+                sh '''
+                docker build -t $IMAGE_NAME:$BUILD_NUMBER .
+                '''
             }
         }
+
+        // =========================================
+        // DOCKER PUSH
+        // =========================================
 
         stage('Docker Push') {
             steps {
-                sh 'docker push $IMAGE_NAME:$BUILD_NUMBER'
+
+                sh '''
+                docker push $IMAGE_NAME:$BUILD_NUMBER
+                '''
             }
         }
 
-        // ---------------- HELM ----------------
+        // =========================================
+        // DOCKER LOGOUT
+        // =========================================
 
-        stage('Update Chart Version') {
+        stage('Docker Logout') {
             steps {
+
+                sh 'docker logout'
+            }
+        }
+
+        // =========================================
+        // UPDATE IMAGE TAG IN KUSTOMIZATION
+        // =========================================
+
+        stage('Update Kustomization Image Tag') {
+            steps {
+
                 sh """
-                sed -i 's/^version:.*/version: 0.1.${BUILD_NUMBER}/' demo-project-chart/Chart.yaml
+                sed -i 's|newTag:.*|newTag: "${BUILD_NUMBER}"|g' \
+                k8s/base/kustomization.yaml
                 """
             }
         }
 
-        stage('Package Helm Chart') {
+        // =========================================
+        // ARCHIVE KUSTOMIZE PACKAGE
+        // =========================================
+
+        stage('Archive Kustomize Package') {
             steps {
-                sh 'helm package demo-project-chart'
+
+                sh '''
+                tar -czf kustomize-package.tar.gz k8s/
+                '''
             }
         }
 
-        stage('Helm Login') {
+        // =========================================
+        // AWS S3 UPLOAD
+        // =========================================
+
+        stage('Upload Package to S3') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'docker-cred',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
-                    sh 'echo $DOCKER_PASS | helm registry login registry-1.docker.io -u $DOCKER_USER --password-stdin'
+
+                withCredentials([
+                    [
+                        $class: 'AmazonWebServicesCredentialsBinding',
+                        credentialsId: 'aws-creds',
+                        accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                        secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                    ]
+                ]) {
+
+                    sh '''
+                    aws s3 cp kustomize-package.tar.gz \
+                    s3://$AWS_BUCKET/
+                    '''
                 }
             }
         }
 
-        stage('Push Helm Chart') {
-            steps {
-                sh """
-                CHART_PACKAGE="${CHART_NAME}-0.1.${BUILD_NUMBER}.tgz"
-                helm push \$CHART_PACKAGE oci://registry-1.docker.io/bazeemme
-                """
-            }
-        }
-
-        // ---------------- DEPLOY TRIGGER ----------------
+        // =========================================
+        // TRIGGER DEPLOY JOB
+        // =========================================
 
         stage('Trigger Deploy Job') {
             steps {
-                build job: 'deploy-job', parameters: [
-                    string(name: 'IMAGE_TAG', value: "${BUILD_NUMBER}"),
-                    string(name: 'CHART_VERSION', value: "0.1.${BUILD_NUMBER}")
+
+                build job: 'deploy-job',
+                parameters: [
+                    string(name: 'IMAGE_TAG', value: "${BUILD_NUMBER}")
                 ]
             }
+        }
+    }
+
+    post {
+
+        success {
+
+            echo 'Kustomize Build Pipeline Completed Successfully'
+        }
+
+        failure {
+
+            echo 'Pipeline Failed'
         }
     }
 }
