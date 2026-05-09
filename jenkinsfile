@@ -156,7 +156,7 @@ pipeline {
             steps {
 
                 sh '''
-                tar -czf kustomize-package.tar.gz kustomize-dir/
+                tar -czf kustomize-package-$BUILD_NUMBER.tar.gz kustomize-dir/
                 '''
             }
         }
