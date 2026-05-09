@@ -178,7 +178,7 @@ pipeline {
                 ]) {
 
                     sh '''
-                    aws s3 cp kustomize-package.tar.gz \
+                    aws s3 cp kustomize-package-$BUILD_NUMBER.tar.gz \
                     s3://$AWS_BUCKET/
                     '''
                 }
@@ -192,7 +192,7 @@ pipeline {
         stage('Trigger Deploy Job') {
             steps {
 
-                build job: 'deploy-job',
+                build job: 'deploy-job-kustomize',
                 parameters: [
                     string(name: 'IMAGE_TAG', value: "${BUILD_NUMBER}")
                 ]
