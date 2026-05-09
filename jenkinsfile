@@ -8,7 +8,7 @@ pipeline {
     environment {
 
         IMAGE_NAME = "bazeemme/my-demo-project-repo"
-
+        PACKAGE_NAME = "kustomize-package-${BUILD-NUMBER}.tar.gz"
         AWS_BUCKET = "kustomize-demo"
     }
 
@@ -156,7 +156,7 @@ pipeline {
             steps {
 
                 sh '''
-                tar -czf kustomize-package-$BUILD_NUMBER.tar.gz kustomize-dir/
+                tar -czf  $PACKAGE_NAME kustomize-dir/
                 '''
             }
         }
@@ -178,7 +178,7 @@ pipeline {
                 ]) {
 
                     sh '''
-                    aws s3 cp kustomize-package-$BUILD_NUMBER.tar.gz \
+                    aws s3 cp $PACKAGE_NAME \
                     s3://$AWS_BUCKET/
                     '''
                 }
@@ -194,7 +194,8 @@ pipeline {
 
                 build job: 'deploy-job-kustomize',
                 parameters: [
-                    string(name: 'IMAGE_TAG', value: "${BUILD_NUMBER}")
+                    string(name: 'IMAGE_TAG', value: "${BUILD_NUMBER}"),
+                    string(name: 'PACKAGE_NAME', value: "${BUILD_NUMBER}")
                 ]
             }
         }
