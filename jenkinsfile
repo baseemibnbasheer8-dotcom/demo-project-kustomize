@@ -8,7 +8,7 @@ pipeline {
     environment {
 
         IMAGE_NAME = "bazeemme/my-demo-project-repo"
-        PACKAGE_NAME = "kustomize-package-${BUILD-NUMBER}.tar.gz"
+        
         AWS_BUCKET = "kustomize-demo"
     }
 
@@ -152,6 +152,17 @@ pipeline {
         // ARCHIVE KUSTOMIZE PACKAGE
         // =========================================
 
+
+
+        stage('Set Package Name') {
+            steps {
+
+                script {
+
+                    env.PACKAGE_NAME = "kustomize-package-${BUILD_NUMBER}.tar.gz"
+                }
+            }
+        }
         stage('Archive Kustomize Package') {
             steps {
 
