@@ -206,7 +206,7 @@ pipeline {
                 build job: 'deploy-job-kustomize',
                 parameters: [
                     string(name: 'IMAGE_TAG', value: "${BUILD_NUMBER}"),
-                    string(name: 'PACKAGE_NAME', value: "${BUILD_NUMBER}")
+                    string(name: 'PACKAGE_NAME', value: "${PACKAGE_NAME}")
                 ]
             }
         }
